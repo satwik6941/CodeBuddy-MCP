@@ -45,7 +45,7 @@ Examples of CORRECT behavior:
 Examples of WRONG behavior:
 - User: "Create hello.py and run it"
   → write_file (create hello.py)
-  → Respond: "I've created hello.py" ❌ WRONG - didn't run it!
+  → Respond: "I've created hello.py"  WRONG - didn't run it!
 
 Guidelines:
 - Break down tasks into steps
@@ -97,11 +97,11 @@ async def send_message(
         
         # Safety check: prevent infinite loops
         if tool_round > max_tool_rounds:
-            print(f"⚠️  Warning: Reached maximum tool rounds ({max_tool_rounds})")
-            print("⚠️  Forcing completion to prevent infinite loop")
+            print(f" Warning: Reached maximum tool rounds ({max_tool_rounds})")
+            print(" Forcing completion to prevent infinite loop")
             break
         
-        print(f"🤖 Claude is using tools... (Round {tool_round})\n")
+        print(f" Claude is using tools... (Round {tool_round})\n")
         
         assistant_content = []
         tool_results = []
@@ -120,8 +120,8 @@ async def send_message(
                 tool_name = content_block.name
                 tool_input = content_block.input
                 
-                print(f"🔧 Tool #{len(tool_results)+1}: {tool_name}")
-                print(f"📥 Input: {json.dumps(tool_input, indent=2)}")
+                print(f" Tool #{len(tool_results)+1}: {tool_name}")
+                print(f" Input: {json.dumps(tool_input, indent=2)}")
                 
                 try:
                     # Execute tool via MCP or E2B
@@ -132,7 +132,7 @@ async def send_message(
                     
                     # Show truncated result for display
                     display_text = result_text[:500] + "..." if len(result_text) > 500 else result_text
-                    print(f"📤 Result: {display_text}\n")
+                    print(f" Result: {display_text}\n")
                     
                     tool_results.append({
                         "type": "tool_result",
@@ -142,7 +142,7 @@ async def send_message(
                     
                 except Exception as e:
                     error_msg = str(e)
-                    print(f"❌ Error: {error_msg}\n")
+                    print(f" Error: {error_msg}\n")
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": content_block.id,
@@ -191,7 +191,7 @@ async def send_message(
     
     # Show completion summary
     if tool_round > 0:
-        print(f"✅ Task completed after {tool_round} tool rounds\n")
+        print(f" Task completed after {tool_round} tool rounds\n")
     
     return final_response
 
@@ -227,7 +227,7 @@ def clear_history():
     """Clear conversation history"""
     global conversation_history
     conversation_history = []
-    print("🗑️  Conversation history cleared")
+    print(" Conversation history cleared")
 
 
 def get_conversation_length() -> int:
@@ -248,7 +248,7 @@ def print_conversation_stats():
             tool_uses += sum(1 for item in msg['content'] 
                            if hasattr(item, 'type') and item.type == 'tool_use')
     
-    print(f"\n📊 Conversation Stats:")
+    print(f"\n Conversation Stats:")
     print(f"   Total messages: {total_messages}")
     print(f"   User messages: {user_messages}")
     print(f"   Assistant messages: {assistant_messages}")
@@ -262,4 +262,4 @@ def truncate_history(keep_last_n: int):
     if len(conversation_history) > keep_last_n:
         removed = len(conversation_history) - keep_last_n
         conversation_history = conversation_history[-keep_last_n:]
-        print(f"✂️  Truncated history: removed {removed} old messages, kept last {keep_last_n}")
+        print(f" Truncated history: removed {removed} old messages, kept last {keep_last_n}")

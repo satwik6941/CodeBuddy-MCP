@@ -1,8 +1,11 @@
-# mcp_connections.py
+import os
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from typing import Dict, Any, List
 import code_interpreter
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Global state
 mcp_servers = {}
@@ -18,7 +21,7 @@ async def connect_github_server(github_token: str):
     server_params = StdioServerParameters(
         command="npx",
         args=["-y", "@modelcontextprotocol/server-github"],
-        env={"GITHUB_PERSONAL_ACCESS_TOKEN": github_token}
+        env={"GITHUB_PERSONAL_ACCESS_TOKEN": os.getenv("GITHUB_PERSONAL_ACCESS_TOKEN")}
     )
     
     await _connect_server("github", server_params)
@@ -62,7 +65,7 @@ async def _connect_server(server_name: str, server_params: StdioServerParameters
     for tool in tools_list.tools:
         tool_to_server_map[tool.name] = server_name
     
-    print(f"✅ {server_name} server connected ({len(tools_list.tools)} tools)")
+    print(f" {server_name} server connected ({len(tools_list.tools)} tools)")
 
 
 async def get_all_tools_for_claude() -> List[Dict[str, Any]]:
@@ -101,7 +104,7 @@ async def execute_tool(tool_name: str, tool_input: Dict[str, Any]) -> Any:
     
     # Route to MCP server
     session = mcp_servers[server_name]['session']
-    print(f"⚙️  Executing {tool_name} on {server_name} server")
+    print(f" Executing {tool_name} on {server_name} server")
     result = await session.call_tool(tool_name, tool_input)
     
     return result

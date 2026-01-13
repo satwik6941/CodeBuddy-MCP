@@ -51,7 +51,7 @@ async def main():
         
     finally:
         await mcp_connections.close_all_servers()
-        print("\n✅ Assistant shutdown complete")
+        print("\n Assistant shutdown complete")
 
 
 if __name__ == "__main__":

@@ -16,7 +16,7 @@ def connect_e2b(api_key: str, workspace_path: str = "./workspace"):
     
     print("🔌 Connecting to E2B sandbox...")
     
-    sandbox = Sandbox(api_key=api_key)
+    sandbox = Sandbox.create(api_key=os.getenv("E2B_API_KEY"))
     
     # Setup local workspace directory structure
     local_workspace_path = os.path.abspath(workspace_path)
@@ -43,10 +43,10 @@ def connect_e2b(api_key: str, workspace_path: str = "./workspace"):
     import shutil
     shutil.copytree(current_project_path, current_link, dirs_exist_ok=True)
     
-    print(f"✅ E2B sandbox connected (ID: {sandbox.sandbox_id})")
-    print(f"📁 Local workspace: {local_workspace_path}")
-    print(f"📁 Current project: {current_project_path}")
-    print(f"📁 Quick access: {current_link}")
+    print(f" E2B sandbox connected (ID: {sandbox.sandbox_id})")
+    print(f" Local workspace: {local_workspace_path}")
+    print(f" Current project: {current_project_path}")
+    print(f" Quick access: {current_link}")
 
 
 def get_current_project_path() -> str:
@@ -63,8 +63,8 @@ def execute_code(language: str, code: str) -> Dict[str, Any]:
     if not sandbox:
         raise ValueError("E2B sandbox not connected")
     
-    print(f"⚙️  Executing {language} code in E2B")
-    print(f"📝 Code:\n{code}\n")
+    print(f" Executing {language} code in E2B")
+    print(f"Code:\n{code}\n")
     
     # Execute the code
     execution = sandbox.run_code(code, language=language)
@@ -97,7 +97,7 @@ def execute_code(language: str, code: str) -> Dict[str, Any]:
     if not result_text:
         result_text = "Code executed successfully (no output)"
     
-    print(f"📤 Result:\n{result_text}\n")
+    print(f" Result:\n{result_text}\n")
     
     return {
         "content": result_text,
@@ -127,7 +127,7 @@ def read_file(path: str) -> str:
     try:
         # Read from E2B sandbox
         content = sandbox.files.read(path)
-        print(f"✅ File read successfully from E2B")
+        print(f" File read successfully from E2B")
         
         # Save to local workspace
         if current_project_path:
@@ -137,11 +137,11 @@ def read_file(path: str) -> str:
             with open(local_file_path, 'w') as f:
                 f.write(content)
             
-            print(f"💾 File saved locally: {local_file_path}")
+            print(f" File saved locally: {local_file_path}")
         
         return content
     except Exception as e:
-        print(f"❌ Error reading file: {e}")
+        print(f" Error reading file: {e}")
         raise
 
 
@@ -152,12 +152,12 @@ def write_file(path: str, content: str) -> str:
     if not sandbox:
         raise ValueError("E2B sandbox not connected")
     
-    print(f"✍️  Writing to file: {path}")
+    print(f" Writing to file: {path}")
     
     try:
         # Write to E2B sandbox
         sandbox.files.write(path, content)
-        print(f"✅ File written to E2B sandbox: {path}")
+        print(f" File written to E2B sandbox: {path}")
         
         # Also save to local workspace
         if current_project_path:
@@ -171,7 +171,7 @@ def write_file(path: str, content: str) -> str:
             with open(local_file_path, 'w') as f:
                 f.write(content)
             
-            print(f"💾 File saved locally: {local_file_path}")
+            print(f" File saved locally: {local_file_path}")
             
             # Update the 'current' directory copy
             current_link = os.path.join(os.path.dirname(current_project_path), "current")
@@ -182,7 +182,7 @@ def write_file(path: str, content: str) -> str:
         
         return f"File {path} created successfully (E2B + Local: {local_file_path})"
     except Exception as e:
-        print(f"❌ Error writing file: {e}")
+        print(f" Error writing file: {e}")
         raise
 
 
@@ -205,23 +205,23 @@ def write_file_to_directory(filename: str, content: str, subdirectory: str = Non
     # Full local path
     local_file_path = os.path.join(target_dir, filename)
     
-    print(f"✍️  Writing to directory: {subdirectory or 'root'}")
-    print(f"✍️  Full path: {local_file_path}")
+    print(f" Writing to directory: {subdirectory or 'root'}")
+    print(f" Full path: {local_file_path}")
     
     try:
         # Write to E2B sandbox (always in root for simplicity)
         sandbox.files.write(filename, content)
-        print(f"✅ File written to E2B sandbox: {filename}")
+        print(f" File written to E2B sandbox: {filename}")
         
         # Write to local filesystem
         with open(local_file_path, 'w') as f:
             f.write(content)
         
-        print(f"💾 File saved locally: {local_file_path}")
+        print(f" File saved locally: {local_file_path}")
         
         return f"File created: {local_file_path}"
     except Exception as e:
-        print(f"❌ Error writing file: {e}")
+        print(f" Error writing file: {e}")
         raise
 
 
@@ -232,20 +232,20 @@ def list_files(path: str = "/") -> list:
     if not sandbox:
         raise ValueError("E2B sandbox not connected")
     
-    print(f"📂 Listing files in E2B sandbox: {path}")
+    print(f"Listing files in E2B sandbox: {path}")
     
     try:
         files = sandbox.files.get_info(path)
-        print(f"✅ Found {len(files)} items in E2B")
+        print(f" Found {len(files)} items in E2B")
         
         # Also show local files
         if current_project_path and os.path.exists(current_project_path):
             local_files = os.listdir(current_project_path)
-            print(f"📂 Local workspace has {len(local_files)} files")
+            print(f"Local workspace has {len(local_files)} files")
         
         return files
     except Exception as e:
-        print(f"❌ Error listing files: {e}")
+        print(f" Error listing files: {e}")
         raise
 
 
@@ -284,10 +284,10 @@ def download_file_from_sandbox(sandbox_path: str, local_filename: str = None) ->
         with open(local_path, 'w') as f:
             f.write(content)
         
-        print(f"⬇️  Downloaded {sandbox_path} -> {local_path}")
+        print(f" Downloaded {sandbox_path} -> {local_path}")
         return f"File downloaded to: {local_path}"
     except Exception as e:
-        print(f"❌ Error downloading file: {e}")
+        print(f" Error downloading file: {e}")
         raise
 
 
@@ -298,7 +298,7 @@ def sync_all_files_from_sandbox() -> str:
     if not sandbox:
         raise ValueError("E2B sandbox not connected")
     
-    print("🔄 Syncing all files from E2B sandbox to local workspace...")
+    print(" Syncing all files from E2B sandbox to local workspace...")
     
     try:
         # List all files in sandbox
@@ -316,13 +316,13 @@ def sync_all_files_from_sandbox() -> str:
                     f.write(content)
                 
                 synced_count += 1
-                print(f"  ✅ Synced: {filename}")
+                print(f"   Synced: {filename}")
             except Exception as e:
-                print(f"  ⚠️  Skipped {filename}: {e}")
+                print(f"   Skipped {filename}: {e}")
         
         return f"Synced {synced_count} files to {current_project_path}"
     except Exception as e:
-        print(f"❌ Error syncing files: {e}")
+        print(f" Error syncing files: {e}")
         raise
 
 
@@ -331,20 +331,20 @@ def close_e2b():
     global sandbox
     
     if sandbox:
-        print("\n🔄 Syncing files before closing...")
+        print("\n Syncing files before closing...")
         try:
             sync_all_files_from_sandbox()
         except Exception as e:
-            print(f"⚠️  Warning: Could not sync all files: {e}")
+            print(f" Warning: Could not sync all files: {e}")
         
         print("🔌 Closing E2B sandbox...")
         sandbox.kill()
         sandbox = None
-        print("✅ E2B sandbox closed")
+        print(" E2B sandbox closed")
         
         if current_project_path:
-            print(f"\n📁 Your files are saved in: {current_project_path}")
-            print(f"📁 Quick access at: {os.path.join(os.path.dirname(current_project_path), 'current')}")
+            print(f"\n Your files are saved in: {current_project_path}")
+            print(f" Quick access at: {os.path.join(os.path.dirname(current_project_path), 'current')}")
 
 
 def get_e2b_tools() -> list:
