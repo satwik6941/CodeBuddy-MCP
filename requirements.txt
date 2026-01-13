@@ -1,0 +1,11 @@
+python-dotenv
+anthropic
+mcp[cli]
+pathlib
+transformers
+torch
+pydantic
+httpx
+PyGithub
+nest-asyncio
+e2b-code-interpreter
