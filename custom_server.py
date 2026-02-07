@@ -17,7 +17,7 @@ def summarise_conversation(conversation_history: str) -> list[base.Message]:
         ),
         base.Message(
             role="user",
-            content=f"Generate code that meets the following requirements: {conversation_history}"
+            content=f"Here is the code: {conversation_history}"
         )
     ]
 

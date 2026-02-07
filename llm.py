@@ -1,11 +1,13 @@
 # claude_handler.py
 from anthropic import Anthropic
-from typing import List, Dict, Any
+from openai import OpenAI
+from typing import List, Dict, Any, Union
 import json
 import mcp_connections
 
-# Global conversation history
+# Global conversation history and API type
 conversation_history = []
+api_type = None  # 'anthropic' or 'openrouter'
 
 # System prompt - ENHANCED
 SYSTEM_PROMPT = """You are an AI Development Assistant that helps developers with their workflow.
@@ -56,144 +58,285 @@ Guidelines:
 
 
 def init_claude(api_key: str) -> Anthropic:
-    """Initialize Claude client"""
+    """Initialize Claude client with Anthropic API"""
+    global api_type
+    api_type = 'anthropic'
     return Anthropic(api_key=api_key)
 
 
+def init_openrouter(api_key: str, site_url: str = "http://localhost:3000", site_name: str = "CodeBuddy MCP") -> OpenAI:
+    """Initialize OpenRouter client using OpenAI library"""
+    global api_type
+    api_type = 'openrouter'
+    client = OpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=api_key,
+        default_headers={
+            "HTTP-Referer": site_url,
+            "X-Title": site_name,
+        }
+    )
+    return client
+
+
 async def send_message(
-    claude_client: Anthropic, 
+    client: Union[Anthropic, OpenAI],
     user_message: str,
-    max_tool_rounds: int = 20
+    max_tool_rounds: int = 20,
+    model: str = None
 ) -> str:
-    """Send message to Claude and handle tool calls until task is complete"""
-    global conversation_history
-    
+    """Send message to LLM and handle tool calls until task is complete"""
+    global conversation_history, api_type
+
     print(f"\n👤 You: {user_message}\n")
-    
+
     # Add user message to history
     conversation_history.append({
         "role": "user",
         "content": user_message
     })
-    
+
     # Get available tools from MCP and E2B
     tools = await mcp_connections.get_all_tools_for_claude()
-    
+
     # Track tool rounds to prevent infinite loops
     tool_round = 0
-    
-    # Call Claude
-    response = claude_client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=4096,
-        system=SYSTEM_PROMPT,
-        tools=tools,
-        messages=conversation_history
-    )
-    
-    # Handle tool use loop - KEEP GOING UNTIL CLAUDE STOPS
-    while response.stop_reason == "tool_use":
-        tool_round += 1
-        
-        # Safety check: prevent infinite loops
-        if tool_round > max_tool_rounds:
-            print(f" Warning: Reached maximum tool rounds ({max_tool_rounds})")
-            print(" Forcing completion to prevent infinite loop")
-            break
-        
-        print(f" Claude is using tools... (Round {tool_round})\n")
-        
-        assistant_content = []
-        tool_results = []
-        
-        # Process each content block
-        for content_block in response.content:
-            if content_block.type == "text":
-                # Claude might provide reasoning between tool calls
-                if content_block.text.strip():
-                    print(f"💭 Claude: {content_block.text}\n")
-                assistant_content.append(content_block)
-            
-            elif content_block.type == "tool_use":
-                assistant_content.append(content_block)
-                
-                tool_name = content_block.name
-                tool_input = content_block.input
-                
-                print(f" Tool #{len(tool_results)+1}: {tool_name}")
-                print(f" Input: {json.dumps(tool_input, indent=2)}")
-                
-                try:
-                    # Execute tool via MCP or E2B
-                    result = await mcp_connections.execute_tool(tool_name, tool_input)
-                    
-                    # Extract result text
-                    result_text = extract_result_text(result)
-                    
-                    # Show truncated result for display
-                    display_text = result_text[:500] + "..." if len(result_text) > 500 else result_text
-                    print(f" Result: {display_text}\n")
-                    
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": content_block.id,
-                        "content": result_text
-                    })
-                    
-                except Exception as e:
-                    error_msg = str(e)
-                    print(f" Error: {error_msg}\n")
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": content_block.id,
-                        "content": f"Error executing tool: {error_msg}",
-                        "is_error": True
-                    })
-        
-        # Add to conversation history
-        conversation_history.append({
-            "role": "assistant",
-            "content": assistant_content
-        })
-        
-        conversation_history.append({
-            "role": "user",
-            "content": tool_results
-        })
-        
-        # Continue conversation with tool results
-        # Claude will decide: "Do I need more tools, or am I done?"
-        response = claude_client.messages.create(
-            model="claude-sonnet-4-20250514",
+
+    # Set default model based on API type
+    if model is None:
+        if api_type == 'anthropic':
+            model = "claude-sonnet-4-20250514"
+        else:  # openrouter
+            model = "anthropic/claude-sonnet-4-20250514"
+
+    # Call LLM based on API type
+    if api_type == 'anthropic':
+        response = client.messages.create(
+            model=model,
             max_tokens=4096,
             system=SYSTEM_PROMPT,
             tools=tools,
             messages=conversation_history
         )
-        
+    else:  # openrouter
+        # Convert conversation history to OpenAI format
+        openai_messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        openai_messages.extend(conversation_history)
+
+        response = client.chat.completions.create(
+            model=model,
+            max_tokens=4096,
+            tools=convert_tools_to_openai_format(tools) if tools else None,
+            messages=openai_messages
+        )
+    
+    # Handle tool use loop - KEEP GOING UNTIL LLM STOPS
+    should_continue = (api_type == 'anthropic' and response.stop_reason == "tool_use") or \
+                     (api_type == 'openrouter' and response.choices[0].finish_reason == "tool_calls")
+
+    while should_continue:
+        tool_round += 1
+
+        # Safety check: prevent infinite loops
+        if tool_round > max_tool_rounds:
+            print(f" Warning: Reached maximum tool rounds ({max_tool_rounds})")
+            print(" Forcing completion to prevent infinite loop")
+            break
+
+        print(f" AI is using tools... (Round {tool_round})\n")
+
+        assistant_content = []
+        tool_results = []
+
+        if api_type == 'anthropic':
+            # Process Anthropic response
+            for content_block in response.content:
+                if content_block.type == "text":
+                    if content_block.text.strip():
+                        print(f"💭 AI: {content_block.text}\n")
+                    assistant_content.append(content_block)
+
+                elif content_block.type == "tool_use":
+                    assistant_content.append(content_block)
+
+                    tool_name = content_block.name
+                    tool_input = content_block.input
+
+                    print(f" Tool #{len(tool_results)+1}: {tool_name}")
+                    print(f" Input: {json.dumps(tool_input, indent=2)}")
+
+                    try:
+                        result = await mcp_connections.execute_tool(tool_name, tool_input)
+                        result_text = extract_result_text(result)
+                        display_text = result_text[:500] + "..." if len(result_text) > 500 else result_text
+                        print(f" Result: {display_text}\n")
+
+                        tool_results.append({
+                            "type": "tool_result",
+                            "tool_use_id": content_block.id,
+                            "content": result_text
+                        })
+                    except Exception as e:
+                        error_msg = str(e)
+                        print(f" Error: {error_msg}\n")
+                        tool_results.append({
+                            "type": "tool_result",
+                            "tool_use_id": content_block.id,
+                            "content": f"Error executing tool: {error_msg}",
+                            "is_error": True
+                        })
+
+            # Add to conversation history
+            conversation_history.append({
+                "role": "assistant",
+                "content": assistant_content
+            })
+
+            conversation_history.append({
+                "role": "user",
+                "content": tool_results
+            })
+
+            # Continue conversation
+            response = client.messages.create(
+                model=model,
+                max_tokens=4096,
+                system=SYSTEM_PROMPT,
+                tools=tools,
+                messages=conversation_history
+            )
+
+            should_continue = response.stop_reason == "tool_use"
+
+        else:  # openrouter
+            # Process OpenRouter/OpenAI response
+            message = response.choices[0].message
+
+            if message.content:
+                print(f"💭 AI: {message.content}\n")
+
+            # Process tool calls (check if tool_calls exists and is not None)
+            if not message.tool_calls:
+                print(" Warning: No tool calls found in response")
+                break
+
+            for tool_call in message.tool_calls:
+                tool_name = tool_call.function.name
+                # Handle arguments - could be string or dict
+                if isinstance(tool_call.function.arguments, str):
+                    tool_input = json.loads(tool_call.function.arguments) if tool_call.function.arguments else {}
+                else:
+                    tool_input = tool_call.function.arguments or {}
+
+                print(f" Tool #{len(tool_results)+1}: {tool_name}")
+                print(f" Input: {json.dumps(tool_input, indent=2)}")
+
+                try:
+                    result = await mcp_connections.execute_tool(tool_name, tool_input)
+                    result_text = extract_result_text(result)
+                    display_text = result_text[:500] + "..." if len(result_text) > 500 else result_text
+                    print(f" Result: {display_text}\n")
+
+                    tool_results.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "name": tool_name,
+                        "content": result_text
+                    })
+                except Exception as e:
+                    error_msg = str(e)
+                    print(f" Error: {error_msg}\n")
+                    tool_results.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "name": tool_name,
+                        "content": f"Error executing tool: {error_msg}"
+                    })
+
+            # Add to conversation history (OpenAI format)
+            assistant_msg = {
+                "role": "assistant",
+                "content": message.content
+            }
+
+            if message.tool_calls:
+                assistant_msg["tool_calls"] = [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments
+                        }
+                    } for tc in message.tool_calls
+                ]
+
+            conversation_history.append(assistant_msg)
+
+            # Add tool results
+            conversation_history.extend(tool_results)
+
+            # Continue conversation
+            openai_messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+            openai_messages.extend(conversation_history)
+
+            response = client.chat.completions.create(
+                model=model,
+                max_tokens=4096,
+                tools=convert_tools_to_openai_format(tools) if tools else None,
+                messages=openai_messages
+            )
+
+            should_continue = response.choices[0].finish_reason == "tool_calls"
+
         # Show progress
         print(f"{'='*60}")
         print(f"Completed tool round {tool_round}")
-        print(f"Claude's decision: {response.stop_reason}")
+        print(f"AI's decision: {response.stop_reason if api_type == 'anthropic' else response.choices[0].finish_reason}")
         print(f"{'='*60}\n")
     
     # Extract final response
     final_response = ""
-    for content_block in response.content:
-        if hasattr(content_block, "text"):
-            final_response += content_block.text
-    
-    # Add to history
-    conversation_history.append({
-        "role": "assistant",
-        "content": response.content
-    })
-    
+    if api_type == 'anthropic':
+        for content_block in response.content:
+            if hasattr(content_block, "text"):
+                final_response += content_block.text
+
+        # Add to history
+        conversation_history.append({
+            "role": "assistant",
+            "content": response.content
+        })
+    else:  # openrouter
+        final_response = response.choices[0].message.content or ""
+
+        # Add to history
+        conversation_history.append({
+            "role": "assistant",
+            "content": final_response
+        })
+
     # Show completion summary
     if tool_round > 0:
         print(f" Task completed after {tool_round} tool rounds\n")
-    
+
     return final_response
+
+
+def convert_tools_to_openai_format(anthropic_tools: List[Dict]) -> List[Dict]:
+    """Convert Anthropic tool format to OpenAI function calling format"""
+    openai_tools = []
+    for tool in anthropic_tools:
+        openai_tool = {
+            "type": "function",
+            "function": {
+                "name": tool["name"],
+                "description": tool["description"],
+                "parameters": tool["input_schema"]
+            }
+        }
+        openai_tools.append(openai_tool)
+    return openai_tools
 
 
 def extract_result_text(result: Any) -> str:

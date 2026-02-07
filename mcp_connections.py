@@ -2,7 +2,7 @@ import os
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from typing import Dict, Any, List
-import code_interpreter
+import docker_interpreter
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -11,7 +11,7 @@ load_dotenv()
 mcp_servers = {}
 tool_to_server_map = {}
 exit_stack = []
-e2b_enabled = False
+docker_enabled = False
 
 
 async def connect_github_server(github_token: str):
@@ -27,16 +27,16 @@ async def connect_github_server(github_token: str):
     await _connect_server("github", server_params)
 
 
-def setup_e2b(api_key: str):
-    """Setup E2B sandbox (not async)"""
-    global e2b_enabled
-    
-    code_interpreter.connect_e2b(api_key)
-    e2b_enabled = True
-    
-    # Map E2B tools
-    for tool in code_interpreter.get_e2b_tools():
-        tool_to_server_map[tool["name"]] = "e2b"
+def setup_docker(workspace_path: str = "./workspace"):
+    """Setup Docker container for code execution (not async)"""
+    global docker_enabled
+
+    docker_interpreter.connect_docker(workspace_path)
+    docker_enabled = True
+
+    # Map Docker tools
+    for tool in docker_interpreter.get_docker_tools():
+        tool_to_server_map[tool["name"]] = "docker"
 
 
 async def _connect_server(server_name: str, server_params: StdioServerParameters):
@@ -84,9 +84,9 @@ async def get_all_tools_for_claude() -> List[Dict[str, Any]]:
                 "input_schema": tool.inputSchema
             })
     
-    # Add E2B tools
-    if e2b_enabled:
-        all_tools.extend(code_interpreter.get_e2b_tools())
+    # Add Docker tools
+    if docker_enabled:
+        all_tools.extend(docker_interpreter.get_docker_tools())
     
     return all_tools
 
@@ -98,9 +98,9 @@ async def execute_tool(tool_name: str, tool_input: Dict[str, Any]) -> Any:
     if not server_name:
         raise ValueError(f"Tool '{tool_name}' not found")
     
-    # Route to E2B
-    if server_name == "e2b":
-        return execute_e2b_tool(tool_name, tool_input)
+    # Route to Docker
+    if server_name == "docker":
+        return execute_docker_tool(tool_name, tool_input)
     
     # Route to MCP server
     session = mcp_servers[server_name]['session']
@@ -110,29 +110,32 @@ async def execute_tool(tool_name: str, tool_input: Dict[str, Any]) -> Any:
     return result
 
 
-def execute_e2b_tool(tool_name: str, tool_input: Dict[str, Any]) -> Dict[str, Any]:
-    """Execute E2B tool (synchronous)"""
+def execute_docker_tool(tool_name: str, tool_input: Dict[str, Any]) -> Dict[str, Any]:
+    """Execute Docker tool (synchronous)"""
     if tool_name == "execute_python":
-        result = code_interpreter.execute_python(tool_input["code"])
+        result = docker_interpreter.execute_python(tool_input["code"])
     elif tool_name == "execute_bash":
-        result = code_interpreter.execute_bash(tool_input["command"])
+        result = docker_interpreter.execute_bash(tool_input["command"])
     elif tool_name == "write_file":
-        content = code_interpreter.write_file(tool_input["path"], tool_input["content"])
+        content = docker_interpreter.write_file(tool_input["path"], tool_input["content"])
         result = {"content": content}
     elif tool_name == "read_file":
-        content = code_interpreter.read_file(tool_input["path"])
+        content = docker_interpreter.read_file(tool_input["path"])
         result = {"content": content}
-    elif tool_name == "list_files":
-        files = code_interpreter.list_files(tool_input.get("path", "/"))
-        result = {"content": "\n".join(files)}
+    elif tool_name == "list_local_files":
+        files = docker_interpreter.list_local_files()
+        result = {"content": files}
+    elif tool_name == "sync_files":
+        content = docker_interpreter.sync_all_files_from_container()
+        result = {"content": content}
     else:
-        raise ValueError(f"Unknown E2B tool: {tool_name}")
-    
+        raise ValueError(f"Unknown Docker tool: {tool_name}")
+
     # Convert to MCP-like format
     class Result:
         def __init__(self, content):
             self.content = [type('obj', (object,), {'text': content})]
-    
+
     return Result(result["content"])
 
 
@@ -148,22 +151,22 @@ def get_tools_summary() -> Dict[str, List[str]]:
 
 async def close_all_servers():
     """Close all connections"""
-    global mcp_servers, tool_to_server_map, exit_stack, e2b_enabled
-    
+    global mcp_servers, tool_to_server_map, exit_stack, docker_enabled
+
     print("\n🔌 Closing connections...")
-    
+
     # Close MCP servers in reverse order
     for context_type, context_manager in reversed(exit_stack):
         try:
             await context_manager.__aexit__(None, None, None)
         except Exception as e:
             print(f"Warning: Error closing {context_type}: {e}")
-    
-    # Close E2B
-    if e2b_enabled:
-        code_interpreter.close_e2b()
-        e2b_enabled = False
-    
+
+    # Close Docker
+    if docker_enabled:
+        docker_interpreter.close_docker()
+        docker_enabled = False
+
     exit_stack.clear()
     mcp_servers.clear()
     tool_to_server_map.clear()

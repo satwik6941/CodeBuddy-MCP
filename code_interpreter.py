@@ -1,4 +1,3 @@
-# e2b_handler.py
 from e2b_code_interpreter import Sandbox
 from typing import Optional, Dict, Any
 import os
@@ -134,7 +133,7 @@ def read_file(path: str) -> str:
             local_file_path = os.path.join(current_project_path, os.path.basename(path))
             os.makedirs(os.path.dirname(local_file_path), exist_ok=True)
             
-            with open(local_file_path, 'w') as f:
+            with open(local_file_path, 'w', encoding='utf-8') as f:
                 f.write(content)
             
             print(f" File saved locally: {local_file_path}")
@@ -168,7 +167,7 @@ def write_file(path: str, content: str) -> str:
             # Create parent directories if needed
             os.makedirs(os.path.dirname(local_file_path), exist_ok=True)
             
-            with open(local_file_path, 'w') as f:
+            with open(local_file_path, 'w', encoding='utf-8') as f:
                 f.write(content)
             
             print(f" File saved locally: {local_file_path}")
@@ -177,7 +176,7 @@ def write_file(path: str, content: str) -> str:
             current_link = os.path.join(os.path.dirname(current_project_path), "current")
             current_link_file = os.path.join(current_link, filename)
             os.makedirs(os.path.dirname(current_link_file), exist_ok=True)
-            with open(current_link_file, 'w') as f:
+            with open(current_link_file, 'w', encoding='utf-8') as f:
                 f.write(content)
         
         return f"File {path} created successfully (E2B + Local: {local_file_path})"
@@ -214,7 +213,7 @@ def write_file_to_directory(filename: str, content: str, subdirectory: str = Non
         print(f" File written to E2B sandbox: {filename}")
         
         # Write to local filesystem
-        with open(local_file_path, 'w') as f:
+        with open(local_file_path, 'w', encoding='utf-8') as f:
             f.write(content)
         
         print(f" File saved locally: {local_file_path}")
@@ -281,7 +280,7 @@ def download_file_from_sandbox(sandbox_path: str, local_filename: str = None) ->
         local_path = os.path.join(current_project_path, local_filename)
         
         # Save locally
-        with open(local_path, 'w') as f:
+        with open(local_path, 'w', encoding='utf-8') as f:
             f.write(content)
         
         print(f" Downloaded {sandbox_path} -> {local_path}")
@@ -312,7 +311,7 @@ def sync_all_files_from_sandbox() -> str:
                 content = sandbox.filesystem.read(filename)
                 local_path = os.path.join(current_project_path, filename)
                 
-                with open(local_path, 'w') as f:
+                with open(local_path, 'w', encoding='utf-8') as f:
                     f.write(content)
                 
                 synced_count += 1

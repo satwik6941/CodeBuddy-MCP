@@ -8,4 +8,4 @@ pydantic
 httpx
 PyGithub
 nest-asyncio
-e2b-code-interpreter
+openai
