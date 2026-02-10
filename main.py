@@ -8,13 +8,19 @@ import llm
 async def setup_assistant():
     """Setup the AI assistant"""
     print("🚀 Setting up CodeBuddy MCP....\n")
-    
+
     # Connect to GitHub MCP
     await mcp_connections.connect_github_server(os.getenv("GITHUB_PERSONAL_ACCESS_TOKEN"))
 
+    # Connect to Render MCP
+    await mcp_connections.connect_render_server()
+
     # Setup Docker for code execution (instead of E2B)
     mcp_connections.setup_docker("./workspace")
-    
+
+    # Setup Vercel CLI inside Docker
+    mcp_connections.setup_vercel()
+
     # Show available tools
     print("\n📋 Available Tools:")
     summary = mcp_connections.get_tools_summary()

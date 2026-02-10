@@ -28,7 +28,7 @@ def _run_docker_command(command: list, check=True) -> subprocess.CompletedProces
         raise RuntimeError(f"Docker command failed: {e.stderr}")
 
 
-def connect_docker(workspace_path: str = "./workspace", image: str = "python:3.11-slim"):
+def connect_docker(workspace_path: str = "./workspace", image: str = "codebuddy-mcp"):
     """Connect to Docker and create a container for code execution"""
     global container_id, container_name, local_workspace_path, current_project_path
 
@@ -89,9 +89,7 @@ def connect_docker(workspace_path: str = "./workspace", image: str = "python:3.1
             "--name", container_name,
             "-v", f"{workspace_mount}:/workspace",
             "-w", "/workspace",
-            "--entrypoint", "/bin/sh",
-            image,
-            "-c", "apt-get update -qq && apt-get install -y -qq curl wget git vim nano > /dev/null 2>&1; tail -f /dev/null"
+            image
         ])
 
         container_id = result.stdout.strip()[:12]  # Get short ID
@@ -132,11 +130,6 @@ def execute_code(language: str, code: str) -> Dict[str, Any]:
     elif language.lower() in ["bash", "sh", "shell"]:
         cmd = ["docker", "exec", container_name, "/bin/bash", "-c", code]
     elif language.lower() in ["javascript", "js", "node"]:
-        # Install node if not present
-        _run_docker_command([
-            "docker", "exec", container_name, "/bin/bash", "-c",
-            "which node || (curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && apt-get install -y nodejs)"
-        ], check=False)
         cmd = ["docker", "exec", container_name, "node", "-e", code]
     else:
         return {
@@ -421,6 +414,169 @@ def close_docker():
         if current_project_path:
             print(f"\n💾 Your files are saved in: {current_project_path}")
             print(f"🔗 Quick access at: {os.path.join(os.path.dirname(current_project_path), 'current')}")
+
+
+def setup_vercel(vercel_token: str):
+    """Verify Vercel CLI is available in Docker container"""
+    global container_name
+
+    if not container_name:
+        raise ValueError("Docker container not connected")
+
+    print("🔧 Setting up Vercel CLI...")
+
+    result = _run_docker_command(
+        ["docker", "exec", container_name, "vercel", "--version"],
+        check=False
+    )
+
+    if result.returncode == 0:
+        print(f"✅ Vercel CLI ready: {result.stdout.strip()}")
+    else:
+        print(f"⚠️ Vercel CLI not found in container. Rebuild image with: docker build -t codebuddy-mcp .")
+
+
+def vercel_deploy(project_dir: str = "/workspace", prod: bool = False) -> Dict[str, Any]:
+    """Deploy project to Vercel"""
+    token = os.getenv("VERCEL_TOKEN", "")
+    prod_flag = "--prod" if prod else ""
+    cmd = f"cd {project_dir} && vercel deploy {prod_flag} --yes --token {token} 2>&1"
+
+    print(f"🚀 Deploying to Vercel ({'production' if prod else 'preview'})...")
+    return execute_code("bash", cmd)
+
+
+def vercel_list_projects() -> Dict[str, Any]:
+    """List all Vercel projects"""
+    token = os.getenv("VERCEL_TOKEN", "")
+    return execute_code("bash", f"vercel projects ls --token {token} 2>&1")
+
+
+def vercel_list_deployments(project_name: str = None) -> Dict[str, Any]:
+    """List deployments"""
+    token = os.getenv("VERCEL_TOKEN", "")
+    project_flag = project_name if project_name else ""
+    return execute_code("bash", f"vercel ls {project_flag} --token {token} 2>&1")
+
+
+def vercel_logs(deployment_url: str) -> Dict[str, Any]:
+    """Get logs for a deployment"""
+    token = os.getenv("VERCEL_TOKEN", "")
+    return execute_code("bash", f"vercel logs {deployment_url} --token {token} 2>&1")
+
+
+def vercel_inspect(deployment_url: str) -> Dict[str, Any]:
+    """Inspect a deployment for details"""
+    token = os.getenv("VERCEL_TOKEN", "")
+    return execute_code("bash", f"vercel inspect {deployment_url} --token {token} 2>&1")
+
+
+def vercel_env_add(key: str, value: str, environment: str = "production", project_name: str = None) -> Dict[str, Any]:
+    """Add an environment variable to a Vercel project"""
+    token = os.getenv("VERCEL_TOKEN", "")
+    project_flag = f"--scope {project_name}" if project_name else ""
+    cmd = f'printf "%s" "{value}" | vercel env add {key} {environment} {project_flag} --token {token} 2>&1'
+    return execute_code("bash", cmd)
+
+
+def get_vercel_tools() -> list:
+    """Get Vercel CLI tools in Claude format"""
+    return [
+        {
+            "name": "vercel_deploy",
+            "description": "Deploy the current project to Vercel. Set prod=true for production deployment, false for preview.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "project_dir": {
+                        "type": "string",
+                        "description": "Directory to deploy (default: /workspace)"
+                    },
+                    "prod": {
+                        "type": "boolean",
+                        "description": "Deploy to production (true) or preview (false)"
+                    }
+                },
+                "required": []
+            }
+        },
+        {
+            "name": "vercel_list_projects",
+            "description": "List all projects in your Vercel account",
+            "input_schema": {
+                "type": "object",
+                "properties": {}
+            }
+        },
+        {
+            "name": "vercel_list_deployments",
+            "description": "List recent deployments. Optionally filter by project name.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "project_name": {
+                        "type": "string",
+                        "description": "Project name to filter deployments (optional)"
+                    }
+                },
+                "required": []
+            }
+        },
+        {
+            "name": "vercel_logs",
+            "description": "Get logs for a specific Vercel deployment by its URL",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "deployment_url": {
+                        "type": "string",
+                        "description": "The deployment URL to get logs for"
+                    }
+                },
+                "required": ["deployment_url"]
+            }
+        },
+        {
+            "name": "vercel_inspect",
+            "description": "Inspect a Vercel deployment for detailed info (status, domains, etc.)",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "deployment_url": {
+                        "type": "string",
+                        "description": "The deployment URL to inspect"
+                    }
+                },
+                "required": ["deployment_url"]
+            }
+        },
+        {
+            "name": "vercel_env_add",
+            "description": "Add an environment variable to a Vercel project",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "key": {
+                        "type": "string",
+                        "description": "Environment variable name"
+                    },
+                    "value": {
+                        "type": "string",
+                        "description": "Environment variable value"
+                    },
+                    "environment": {
+                        "type": "string",
+                        "description": "Target environment: production, preview, or development"
+                    },
+                    "project_name": {
+                        "type": "string",
+                        "description": "Project name (optional)"
+                    }
+                },
+                "required": ["key", "value"]
+            }
+        }
+    ]
 
 
 def get_docker_tools() -> list:
