@@ -134,6 +134,12 @@ async def send_message(
             messages=openai_messages
         )
     
+    # Debug: show what the model returned
+    if api_type == 'openrouter':
+        print(f"🔍 Debug - finish_reason: {response.choices[0].finish_reason}")
+        print(f"🔍 Debug - tool_calls: {response.choices[0].message.tool_calls}")
+        print(f"🔍 Debug - total tools sent: {len(tools)}")
+
     # Handle tool use loop - KEEP GOING UNTIL LLM STOPS
     should_continue = (api_type == 'anthropic' and response.stop_reason == "tool_use") or \
                      (api_type == 'openrouter' and response.choices[0].finish_reason == "tool_calls")
