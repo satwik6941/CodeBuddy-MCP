@@ -10,3 +10,5 @@ jobs:
     steps:
       - name: Hello
         run: echo "Hello, World!"
+      - name: List all files
+        run: ls -R
